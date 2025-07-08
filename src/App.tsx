@@ -414,11 +414,7 @@ function App() {
   };
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('es-CO', {
-      style: 'currency',
-      currency: 'COP',
-      minimumFractionDigits: 0
-    }).format(value);
+    return `$${Math.round(value).toLocaleString('es-CO')}`;
   };
 
   // Obtener lista única de socios para el selector
