@@ -65,7 +65,7 @@ const ExitDetailsModal: React.FC<ExitDetailsModalProps> = ({
               Detalle de Salidas
             </h3>
             <p className="text-sm text-gray-600 mt-1">
-              {socio} - {new Date(fecha).toLocaleDateString('es-CO')}
+              {socio} - {new Date(fecha + 'T00:00:00').toLocaleDateString('es-CO')}
             </p>
           </div>
           <button

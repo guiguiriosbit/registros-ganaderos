@@ -467,7 +467,7 @@ function App() {
               </h1>
             </div>
             <p className="text-gray-600 text-lg">
-              Sistema de control de inventario y cálculo de valores por socio
+              {socio} - {new Date(fecha + 'T00:00:00').toLocaleDateString('es-CO')}
             </p>
             {isOffline && (
               <div className="mt-4 bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-lg flex items-center justify-center">
@@ -703,7 +703,7 @@ function App() {
                       Valor por Animal (Fórmula I: J/B)
                     </label>
                     <div className="text-2xl font-bold text-green-900">
-                      {formatCurrency(resultados.valorAnimal)}
+                      {`$${Math.round(resultados.valorAnimal).toLocaleString('es-CO')}`}
                     </div>
                   </div>
                   
@@ -712,11 +712,11 @@ function App() {
                       Valor Total (Fórmula J: (E×F)+G/COUNT)
                     </label>
                     <div className="text-2xl font-bold text-purple-900">
-                      {formatCurrency(resultados.total)}
+                      {`$${Math.round(resultados.total).toLocaleString('es-CO')}`}
                     </div>
                     {formData.socio && formData.fecha && formData.fletes && (
                       <div className="text-xs text-purple-600 mt-2 bg-purple-100 p-2 rounded">
-                        <strong>Cálculo:</strong> ({formData.kgTotales || 0} × {formData.vrKilo || 0}) + ({formData.fletes || 0} ÷ {resultados.divisorFlete})
+                        <strong>Cálculo:</strong> ({Math.round(parseFloat(formData.kgTotales) || 0)} × {Math.round(parseFloat(formData.vrKilo) || 0)}) + ({Math.round(parseFloat(formData.fletes) || 0)} ÷ {resultados.divisorFlete})
                         <br />
                         <strong>Flete dividido por:</strong> {resultados.divisorFlete} entrada(s) de {formData.socio} en {formData.fecha}
                         <br />
@@ -760,7 +760,7 @@ function App() {
                     </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-orange-600">
-                        {formatCurrency(estadisticasDelSocio.totalAcumulado)}
+                        {`$${Math.round(estadisticasDelSocio.totalAcumulado).toLocaleString('es-CO')}`}
                       </div>
                       <div className="text-sm text-gray-600">
                         Total Acumulado
@@ -871,7 +871,7 @@ function App() {
                               ) : (
                                 <div className="flex items-center">
                                   <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                                  {new Date(registro.fecha).toLocaleDateString('es-CO')}
+                                  {new Date(registro.fecha + 'T00:00:00').toLocaleDateString('es-CO')}
                                 </div>
                               )}
                             </td>
@@ -926,7 +926,7 @@ function App() {
                                   step="0.01"
                                 />
                               ) : (
-                                `${(registro.kg_totales || 0).toFixed(2)} kg`
+                                `${Math.round(registro.kg_totales || 0)} kg`
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -940,7 +940,7 @@ function App() {
                                   step="0.01"
                                 />
                               ) : (
-                                formatCurrency(registro.vr_kilo || 0)
+                                `$${Math.round(registro.vr_kilo || 0).toLocaleString('es-CO')}`
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -955,7 +955,7 @@ function App() {
                                 />
                               ) : (
                                 <div>
-                                  {formatCurrency(registro.fletes || 0)}
+                                  {`$${Math.round(registro.fletes || 0).toLocaleString('es-CO')}`}
                                   <div className="text-xs text-gray-500">
                                     ÷{entradasMismaFecha} entrada(s)
                                   </div>
@@ -963,12 +963,12 @@ function App() {
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {formatCurrency(registro.valor_animal || 0)}
+                              {`$${Math.round(registro.valor_animal || 0).toLocaleString('es-CO')}`}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
-                              {formatCurrency(registro.total || 0)}
+                              {`$${Math.round(registro.total || 0).toLocaleString('es-CO')}`}
                               <div className="text-xs text-gray-500">
-                                ({(registro.kg_totales || 0).toFixed(0)}×{(registro.vr_kilo || 0).toFixed(0)})+({(registro.fletes || 0).toFixed(0)}÷{entradasMismaFecha})
+                                ({Math.round(registro.kg_totales || 0)}×{Math.round(registro.vr_kilo || 0)})+({Math.round(registro.fletes || 0)}÷{entradasMismaFecha})
                               </div>
                             </td>
                           </tr>
