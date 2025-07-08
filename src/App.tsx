@@ -467,7 +467,7 @@ function App() {
               </h1>
             </div>
             <p className="text-gray-600 text-lg">
-              {socio} - {new Date(fecha + 'T00:00:00').toLocaleDateString('es-CO')}
+              Sistema de Registro Ganadero
             </p>
             {isOffline && (
               <div className="mt-4 bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-lg flex items-center justify-center">
