@@ -1,20 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, Save, BarChart3, AlertCircle, Search, Users, Calendar, Trash2, Edit3, Check, X } from 'lucide-react';
-
-interface Registro {
-  id: string;
-  socio: string;
-  fecha: string;
-  entradas: number;
-  salidas: number;
-  saldo: number;
-  kgTotales: number;
-  vrKilo: number;
-  fletes: number;
-  comision: number;
-  valorAnimal: number;
-  total: number;
-}
+import { Calculator, Save, BarChart3, AlertCircle, Search, Users, Calendar, Trash2, Edit3, Check, X, Eye } from 'lucide-react';
+import { supabase, Registro, SalidaDetalle } from './lib/supabase';
+import ExitReasonsModal, { ExitReasonEntry } from './components/ExitReasonsModal';
+import ExitDetailsModal from './components/ExitDetailsModal';
 
 function App() {
   const [registros, setRegistros] = useState<Registro[]>([]);
@@ -38,6 +26,14 @@ function App() {
   const [socioSeleccionado, setSocioSeleccionado] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<Partial<Registro>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  
+  // Modal states
+  const [showExitReasonsModal, setShowExitReasonsModal] = useState(false);
+  const [showExitDetailsModal, setShowExitDetailsModal] = useState(false);
+  const [selectedExitDetails, setSelectedExitDetails] = useState<SalidaDetalle[]>([]);
+  const [selectedRegistroForExits, setSelectedRegistroForExits] = useState<Registro | null>(null);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -46,20 +42,7 @@ function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Cargar registros guardados localmente
-    const registrosGuardados = localStorage.getItem('registrosGanaderos');
-    if (registrosGuardados) {
-      const registrosCargados = JSON.parse(registrosGuardados);
-      // Recalcular todos los registros al cargar
-      const registrosRecalculados = recalcularTodosLosRegistros(registrosCargados);
-      setRegistros(registrosRecalculados);
-      
-      // Seleccionar el primer socio disponible si no hay uno seleccionado
-      if (registrosRecalculados.length > 0 && !socioSeleccionado) {
-        const primerSocio = registrosRecalculados[0].socio;
-        setSocioSeleccionado(primerSocio);
-      }
-    }
+    loadRegistros();
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -67,16 +50,60 @@ function App() {
     };
   }, []);
 
-  // Función para recalcular todos los registros existentes
-  const recalcularTodosLosRegistros = (registrosOriginales: Registro[]) => {
-    return registrosOriginales.map(registro => {
+  const loadRegistros = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('registros')
+        .select('*')
+        .order('fecha', { ascending: false });
+
+      if (error) throw error;
+
+      const registrosConvertidos = data.map(registro => ({
+        ...registro,
+        id: registro.id,
+        socio: registro.socio,
+        fecha: registro.fecha,
+        entradas: registro.entradas || 0,
+        salidas: registro.salidas || 0,
+        saldo: registro.saldo || 0,
+        kg_totales: registro.kg_totales || 0,
+        vr_kilo: registro.vr_kilo || 0,
+        fletes: registro.fletes || 0,
+        comision: registro.comision || 0,
+        valor_animal: registro.valor_animal || 0,
+        total: registro.total || 0
+      }));
+
+      // Recalcular todos los registros
+      const registrosRecalculados = await recalcularTodosLosRegistros(registrosConvertidos);
+      setRegistros(registrosRecalculados);
+
+      // Seleccionar el primer socio si no hay uno seleccionado
+      if (registrosRecalculados.length > 0 && !socioSeleccionado) {
+        const primerSocio = registrosRecalculados[0].socio;
+        setSocioSeleccionado(primerSocio);
+      }
+    } catch (error) {
+      console.error('Error loading registros:', error);
+      setError('Error al cargar los registros');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const recalcularTodosLosRegistros = async (registrosOriginales: Registro[]) => {
+    const registrosRecalculados = [];
+    
+    for (const registro of registrosOriginales) {
       // Contar cuántas entradas tiene el mismo socio en la misma fecha
       const entradasMismaFecha = registrosOriginales.filter(r => 
         r.socio === registro.socio && r.fecha === registro.fecha
       ).length;
 
       // Recalcular el total con el divisor correcto
-      const nuevoTotal = (registro.kgTotales * registro.vrKilo) + (registro.fletes / entradasMismaFecha);
+      const nuevoTotal = (registro.kg_totales * registro.vr_kilo) + (registro.fletes / entradasMismaFecha);
       
       // Recalcular valor por animal
       const nuevoValorAnimal = registro.entradas > 0 ? nuevoTotal / registro.entradas : 0;
@@ -84,16 +111,33 @@ function App() {
       // Recalcular saldo
       const nuevoSaldo = registro.entradas - registro.salidas;
 
-      return {
+      const registroRecalculado = {
         ...registro,
         saldo: nuevoSaldo,
         total: nuevoTotal,
-        valorAnimal: nuevoValorAnimal
+        valor_animal: nuevoValorAnimal
       };
-    });
+
+      registrosRecalculados.push(registroRecalculado);
+
+      // Actualizar en la base de datos
+      try {
+        await supabase
+          .from('registros')
+          .update({
+            saldo: nuevoSaldo,
+            total: nuevoTotal,
+            valor_animal: nuevoValorAnimal
+          })
+          .eq('id', registro.id);
+      } catch (error) {
+        console.error('Error updating registro:', error);
+      }
+    }
+
+    return registrosRecalculados;
   };
 
-  // Función para contar entradas del mismo socio en la misma fecha (incluyendo el registro actual)
   const contarEntradasPorSocioYFecha = (socio: string, fecha: string) => {
     if (!socio || !fecha) return 1;
     
@@ -101,11 +145,9 @@ function App() {
       registro && registro.socio && registro.socio === socio && registro.fecha === fecha
     ).length;
     
-    // Retorna el número actual + 1 (para incluir el registro que se está creando)
     return count + 1;
   };
 
-  // Implementación corregida de las fórmulas de Excel
   const calcularResultados = () => {
     const entradas = parseFloat(formData.entradas) || 0;
     const salidas = parseFloat(formData.salidas) || 0;
@@ -115,23 +157,18 @@ function App() {
 
     const saldo = entradas - salidas;
 
-    // Fórmula J corregida: (kgTotales * vrKilo) + (fletes / número de entradas del mismo socio y fecha)
     let valorTotal = 0;
     let divisorFlete = 1;
     
     try {
       if (kgTotales > 0 && vrKilo > 0) {
-        // Contar cuántas entradas tendrá el mismo socio en la misma fecha (incluyendo este registro)
         divisorFlete = contarEntradasPorSocioYFecha(formData.socio, formData.fecha);
-        
-        // Aplicar la fórmula: (kgTotales * vrKilo) + (fletes / divisorFlete)
         valorTotal = (kgTotales * vrKilo) + (fletes / divisorFlete);
       }
     } catch (error) {
       valorTotal = 0;
     }
 
-    // Fórmula I: =J3/B3 (Total/Entradas)
     let valorAnimal = 0;
     try {
       if (entradas > 0 && valorTotal > 0) {
@@ -161,7 +198,39 @@ function App() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSalidasChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      salidas: value
+    }));
+
+    // Si hay salidas, mostrar el modal para especificar las causas
+    if (parseInt(value) > 0) {
+      setSelectedRegistroForExits({
+        id: '',
+        socio: formData.socio,
+        fecha: formData.fecha,
+        entradas: parseInt(formData.entradas) || 0,
+        salidas: parseInt(value) || 0,
+        saldo: 0,
+        kg_totales: parseFloat(formData.kgTotales) || 0,
+        vr_kilo: parseFloat(formData.vrKilo) || 0,
+        fletes: parseFloat(formData.fletes) || 0,
+        comision: parseFloat(formData.comision) || 0,
+        valor_animal: 0,
+        total: 0
+      });
+      setShowExitReasonsModal(true);
+    }
+  };
+
+  const handleExitReasonsSave = async (exitReasons: ExitReasonEntry[]) => {
+    setShowExitReasonsModal(false);
+    // Los detalles de salida se guardarán cuando se guarde el registro completo
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.socio.trim()) {
@@ -169,51 +238,75 @@ function App() {
       return;
     }
 
-    const nuevoRegistro: Registro = {
-      id: Date.now().toString(),
-      socio: formData.socio.trim().toUpperCase(),
-      fecha: formData.fecha,
-      entradas: parseFloat(formData.entradas) || 0,
-      salidas: parseFloat(formData.salidas) || 0,
-      saldo: resultados.saldo,
-      kgTotales: parseFloat(formData.kgTotales) || 0,
-      vrKilo: parseFloat(formData.vrKilo) || 0,
-      fletes: parseFloat(formData.fletes) || 0,
-      comision: parseFloat(formData.comision) || 0,
-      valorAnimal: resultados.valorAnimal,
-      total: resultados.total
-    };
+    try {
+      setLoading(true);
 
-    // Agregar el nuevo registro
-    const registrosConNuevo = [...registros, nuevoRegistro];
-    
-    // Recalcular TODOS los registros porque pueden haber cambiado los divisores
-    const registrosRecalculados = recalcularTodosLosRegistros(registrosConNuevo);
-    
-    setRegistros(registrosRecalculados);
-    localStorage.setItem('registrosGanaderos', JSON.stringify(registrosRecalculados));
+      const nuevoRegistro = {
+        socio: formData.socio.trim().toUpperCase(),
+        fecha: formData.fecha,
+        entradas: parseFloat(formData.entradas) || 0,
+        salidas: parseFloat(formData.salidas) || 0,
+        saldo: resultados.saldo,
+        kg_totales: parseFloat(formData.kgTotales) || 0,
+        vr_kilo: parseFloat(formData.vrKilo) || 0,
+        fletes: parseFloat(formData.fletes) || 0,
+        comision: parseFloat(formData.comision) || 0,
+        valor_animal: resultados.valorAnimal,
+        total: resultados.total
+      };
 
-    // Si es el primer registro o no hay socio seleccionado, seleccionar este socio
-    if (!socioSeleccionado || registros.length === 0) {
-      setSocioSeleccionado(nuevoRegistro.socio);
+      const { data, error } = await supabase
+        .from('registros')
+        .insert([nuevoRegistro])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Si hay salidas, necesitamos guardar los detalles
+      const salidas = parseFloat(formData.salidas) || 0;
+      if (salidas > 0) {
+        // Mostrar modal para especificar causas de salida
+        setSelectedRegistroForExits({
+          ...data,
+          kg_totales: data.kg_totales,
+          vr_kilo: data.vr_kilo,
+          valor_animal: data.valor_animal
+        });
+        setShowExitReasonsModal(true);
+      }
+
+      // Recargar registros
+      await loadRegistros();
+
+      // Si es el primer registro o no hay socio seleccionado, seleccionar este socio
+      if (!socioSeleccionado || registros.length === 0) {
+        setSocioSeleccionado(nuevoRegistro.socio);
+      }
+
+      // Limpiar formulario
+      setFormData({
+        socio: '',
+        fecha: '',
+        entradas: '',
+        salidas: '',
+        kgTotales: '',
+        vrKilo: '',
+        fletes: '',
+        comision: ''
+      });
+
+      if (salidas === 0) {
+        alert('Registro guardado exitosamente.');
+      }
+    } catch (error) {
+      console.error('Error saving registro:', error);
+      alert('Error al guardar el registro');
+    } finally {
+      setLoading(false);
     }
-
-    // Limpiar formulario
-    setFormData({
-      socio: '',
-      fecha: '',
-      entradas: '',
-      salidas: '',
-      kgTotales: '',
-      vrKilo: '',
-      fletes: '',
-      comision: ''
-    });
-
-    alert('Registro guardado exitosamente. Todos los valores han sido recalculados.');
   };
 
-  // Función para iniciar edición
   const startEditing = (registro: Registro) => {
     setEditingId(registro.id);
     setEditingData({
@@ -221,53 +314,57 @@ function App() {
       fecha: registro.fecha,
       entradas: registro.entradas,
       salidas: registro.salidas,
-      kgTotales: registro.kgTotales,
-      vrKilo: registro.vrKilo,
+      kg_totales: registro.kg_totales,
+      vr_kilo: registro.vr_kilo,
       fletes: registro.fletes,
       comision: registro.comision
     });
   };
 
-  // Función para cancelar edición
   const cancelEditing = () => {
     setEditingId(null);
     setEditingData({});
   };
 
-  // Función para guardar edición
-  const saveEditing = () => {
+  const saveEditing = async () => {
     if (!editingId) return;
 
-    const registrosActualizados = registros.map(registro => {
-      if (registro.id === editingId) {
-        return {
-          ...registro,
-          socio: (editingData.socio || '').toString().toUpperCase(),
-          fecha: editingData.fecha || registro.fecha,
-          entradas: parseFloat(editingData.entradas?.toString() || '0') || 0,
-          salidas: parseFloat(editingData.salidas?.toString() || '0') || 0,
-          kgTotales: parseFloat(editingData.kgTotales?.toString() || '0') || 0,
-          vrKilo: parseFloat(editingData.vrKilo?.toString() || '0') || 0,
-          fletes: parseFloat(editingData.fletes?.toString() || '0') || 0,
-          comision: parseFloat(editingData.comision?.toString() || '0') || 0
-        };
-      }
-      return registro;
-    });
+    try {
+      setLoading(true);
 
-    // Recalcular todos los registros después de la edición
-    const registrosRecalculados = recalcularTodosLosRegistros(registrosActualizados);
-    
-    setRegistros(registrosRecalculados);
-    localStorage.setItem('registrosGanaderos', JSON.stringify(registrosRecalculados));
-    
-    setEditingId(null);
-    setEditingData({});
-    
-    alert('Registro actualizado exitosamente. Todos los valores han sido recalculados.');
+      const registroActualizado = {
+        socio: (editingData.socio || '').toString().toUpperCase(),
+        fecha: editingData.fecha,
+        entradas: parseFloat(editingData.entradas?.toString() || '0') || 0,
+        salidas: parseFloat(editingData.salidas?.toString() || '0') || 0,
+        kg_totales: parseFloat(editingData.kg_totales?.toString() || '0') || 0,
+        vr_kilo: parseFloat(editingData.vr_kilo?.toString() || '0') || 0,
+        fletes: parseFloat(editingData.fletes?.toString() || '0') || 0,
+        comision: parseFloat(editingData.comision?.toString() || '0') || 0
+      };
+
+      const { error } = await supabase
+        .from('registros')
+        .update(registroActualizado)
+        .eq('id', editingId);
+
+      if (error) throw error;
+
+      // Recargar registros
+      await loadRegistros();
+      
+      setEditingId(null);
+      setEditingData({});
+      
+      alert('Registro actualizado exitosamente.');
+    } catch (error) {
+      console.error('Error updating registro:', error);
+      alert('Error al actualizar el registro');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Función para manejar cambios en edición
   const handleEditingChange = (field: string, value: string | number) => {
     setEditingData(prev => ({
       ...prev,
@@ -275,13 +372,44 @@ function App() {
     }));
   };
 
-  // Función para limpiar todos los datos
-  const limpiarTodosLosDatos = () => {
+  const limpiarTodosLosDatos = async () => {
     if (window.confirm('¿Estás seguro de que quieres eliminar todos los registros? Esta acción no se puede deshacer.')) {
-      localStorage.removeItem('registrosGanaderos');
-      setRegistros([]);
-      setSocioSeleccionado('');
-      alert('Todos los datos han sido eliminados');
+      try {
+        setLoading(true);
+        
+        // Eliminar todos los detalles de salida primero
+        await supabase.from('salidas_detalle').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        // Luego eliminar todos los registros
+        await supabase.from('registros').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        setRegistros([]);
+        setSocioSeleccionado('');
+        alert('Todos los datos han sido eliminados');
+      } catch (error) {
+        console.error('Error deleting data:', error);
+        alert('Error al eliminar los datos');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const showExitDetails = async (registro: Registro) => {
+    try {
+      const { data, error } = await supabase
+        .from('salidas_detalle')
+        .select('*')
+        .eq('registro_id', registro.id);
+
+      if (error) throw error;
+
+      setSelectedExitDetails(data || []);
+      setSelectedRegistroForExits(registro);
+      setShowExitDetailsModal(true);
+    } catch (error) {
+      console.error('Error loading exit details:', error);
+      alert('Error al cargar los detalles de salida');
     }
   };
 
@@ -313,6 +441,17 @@ function App() {
     totalAcumulado: registrosDelSocio.reduce((sum, reg) => sum + (reg.total || 0), 0)
   };
 
+  if (loading && registros.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando registros...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50">
       <div className="container mx-auto px-4 py-8">
@@ -333,7 +472,14 @@ function App() {
             {isOffline && (
               <div className="mt-4 bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-lg flex items-center justify-center">
                 <AlertCircle className="w-5 h-5 mr-2" />
-                Sin conexión - Los registros se guardan localmente
+                Sin conexión - Funcionalidad limitada
+              </div>
+            )}
+            
+            {error && (
+              <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 mr-2" />
+                {error}
               </div>
             )}
             
@@ -341,7 +487,8 @@ function App() {
             <div className="mt-4">
               <button
                 onClick={limpiarTodosLosDatos}
-                className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors font-medium shadow-lg hover:shadow-xl flex items-center mx-auto"
+                disabled={loading}
+                className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors font-medium shadow-lg hover:shadow-xl flex items-center mx-auto disabled:opacity-50"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Eliminar Todos los Datos
@@ -452,7 +599,7 @@ function App() {
                       type="number"
                       name="salidas"
                       value={formData.salidas}
-                      onChange={handleInputChange}
+                      onChange={handleSalidasChange}
                       min="0"
                       step="1"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
@@ -524,9 +671,10 @@ function App() {
 
                 <button
                   type="submit"
-                  className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg hover:bg-emerald-700 transition-colors font-medium shadow-lg hover:shadow-xl"
+                  disabled={loading}
+                  className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg hover:bg-emerald-700 transition-colors font-medium shadow-lg hover:shadow-xl disabled:opacity-50"
                 >
-                  Guardar Registro
+                  {loading ? 'Guardando...' : 'Guardar Registro'}
                 </button>
               </form>
             </div>
@@ -750,7 +898,16 @@ function App() {
                                   min="0"
                                 />
                               ) : (
-                                registro.salidas || 0
+                                <button
+                                  onClick={() => showExitDetails(registro)}
+                                  className="flex items-center text-blue-600 hover:text-blue-800 transition-colors"
+                                  title="Ver detalles de salidas"
+                                >
+                                  {registro.salidas || 0}
+                                  {(registro.salidas || 0) > 0 && (
+                                    <Eye className="w-3 h-3 ml-1" />
+                                  )}
+                                </button>
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -762,28 +919,28 @@ function App() {
                               {isEditing ? (
                                 <input
                                   type="number"
-                                  value={editingData.kgTotales || ''}
-                                  onChange={(e) => handleEditingChange('kgTotales', e.target.value)}
+                                  value={editingData.kg_totales || ''}
+                                  onChange={(e) => handleEditingChange('kg_totales', e.target.value)}
                                   className="w-20 px-2 py-1 border border-gray-300 rounded text-xs"
                                   min="0"
                                   step="0.01"
                                 />
                               ) : (
-                                `${(registro.kgTotales || 0).toFixed(2)} kg`
+                                `${(registro.kg_totales || 0).toFixed(2)} kg`
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                               {isEditing ? (
                                 <input
                                   type="number"
-                                  value={editingData.vrKilo || ''}
-                                  onChange={(e) => handleEditingChange('vrKilo', e.target.value)}
+                                  value={editingData.vr_kilo || ''}
+                                  onChange={(e) => handleEditingChange('vr_kilo', e.target.value)}
                                   className="w-20 px-2 py-1 border border-gray-300 rounded text-xs"
                                   min="0"
                                   step="0.01"
                                 />
                               ) : (
-                                formatCurrency(registro.vrKilo || 0)
+                                formatCurrency(registro.vr_kilo || 0)
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
@@ -806,12 +963,12 @@ function App() {
                               )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {formatCurrency(registro.valorAnimal || 0)}
+                              {formatCurrency(registro.valor_animal || 0)}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">
                               {formatCurrency(registro.total || 0)}
                               <div className="text-xs text-gray-500">
-                                ({(registro.kgTotales || 0).toFixed(0)}×{(registro.vrKilo || 0).toFixed(0)})+({(registro.fletes || 0).toFixed(0)}÷{entradasMismaFecha})
+                                ({(registro.kg_totales || 0).toFixed(0)}×{(registro.vr_kilo || 0).toFixed(0)})+({(registro.fletes || 0).toFixed(0)}÷{entradasMismaFecha})
                               </div>
                             </td>
                           </tr>
@@ -840,7 +997,7 @@ function App() {
           )}
 
           {/* Mensaje cuando no hay registros */}
-          {registros.length === 0 && (
+          {registros.length === 0 && !loading && (
             <div className="mt-8 bg-white rounded-xl shadow-lg p-8 text-center">
               <div className="text-gray-400 mb-4">
                 <Users className="w-16 h-16 mx-auto" />
@@ -855,6 +1012,26 @@ function App() {
           )}
         </div>
       </div>
+
+      {/* Modales */}
+      <ExitReasonsModal
+        isOpen={showExitReasonsModal}
+        onClose={() => setShowExitReasonsModal(false)}
+        onSave={handleExitReasonsSave}
+        totalExits={selectedRegistroForExits?.salidas || 0}
+        socio={selectedRegistroForExits?.socio || ''}
+        fecha={selectedRegistroForExits?.fecha || ''}
+        registroId={selectedRegistroForExits?.id}
+      />
+
+      <ExitDetailsModal
+        isOpen={showExitDetailsModal}
+        onClose={() => setShowExitDetailsModal(false)}
+        exitDetails={selectedExitDetails}
+        socio={selectedRegistroForExits?.socio || ''}
+        fecha={selectedRegistroForExits?.fecha || ''}
+        totalExits={selectedRegistroForExits?.salidas || 0}
+      />
     </div>
   );
 }
