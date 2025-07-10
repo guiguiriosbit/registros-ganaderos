@@ -459,7 +459,7 @@ function App() {
                 <Calculator className="w-8 h-8 text-white" />
               </div>
               <h1 className="text-3xl font-bold text-gray-800">
-                Registro Ganadero por Socios
+                Registro Ganaderos 
               </h1>
             </div>
             <p className="text-gray-600 text-lg">
@@ -481,14 +481,14 @@ function App() {
             
             {/* Botón para limpiar datos */}
             <div className="mt-4">
-              <button
+              {/*<button
                 onClick={limpiarTodosLosDatos}
                 disabled={loading}
                 className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors font-medium shadow-lg hover:shadow-xl flex items-center mx-auto disabled:opacity-50"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Eliminar Todos los Datos
-              </button>
+              </button>*/}
             </div>
           </div>
 
