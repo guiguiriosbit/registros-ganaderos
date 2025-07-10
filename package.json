@@ -1,7 +1,13 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "registros-ganaderos",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Sistema de registro ganadero por socios",
+  "author": "guiguiriosbit@gmail.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guiguiriosbit/registros-ganaderos2.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
